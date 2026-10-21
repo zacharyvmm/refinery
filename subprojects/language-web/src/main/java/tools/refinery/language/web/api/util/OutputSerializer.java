@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2025 The Refinery Authors <https://refinery.tools/>
+ * SPDX-FileCopyrightText: 2025-2026 The Refinery Authors <https://refinery.tools/>
  *
  * SPDX-License-Identifier: EPL-2.0
  */
@@ -8,6 +8,7 @@ package tools.refinery.language.web.api.util;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import org.eclipse.xtext.web.server.validation.ValidationResult;
+import org.jetbrains.annotations.Nullable;
 import tools.refinery.generator.ModelFacade;
 import tools.refinery.generator.ModelFacadeResult;
 import tools.refinery.generator.RefineryDiagnostics;
@@ -77,8 +78,8 @@ public class OutputSerializer {
 		return true;
 	}
 
-	public PartialModelJson savePartialInterpretation(ModelFacade facade) {
-		return partialModel2Json.savePartialInterpretation(facade, cancellationToken);
+	public PartialModelJson savePartialInterpretation(ModelFacade facade, @Nullable List<String> relations) {
+		return partialModel2Json.savePartialInterpretation(facade, cancellationToken, relations);
 	}
 
 	public List<ValidationResult.Issue> getIssues(ModelFacade facade) {

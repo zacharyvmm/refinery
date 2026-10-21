@@ -1,11 +1,14 @@
 /*
- * SPDX-FileCopyrightText: 2025 The Refinery Authors <https://refinery.tools/>
+ * SPDX-FileCopyrightText: 2025-2026 The Refinery Authors <https://refinery.tools/>
  *
  * SPDX-License-Identifier: EPL-2.0
  */
 package tools.refinery.language.web.api.dto;
 
 import jakarta.validation.constraints.NotNull;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.List;
 
 public class JsonOutputFormat extends OutputFormat {
 	@NotNull
@@ -13,6 +16,12 @@ public class JsonOutputFormat extends OutputFormat {
 
 	@NotNull
 	private PartialInterpretationPreservation shadowPredicates = PartialInterpretationPreservation.DISCARD;
+
+	/**
+	 * The names of the relations to include in the output, or {@code null} to include every relation.
+	 */
+	@Nullable
+	private List<@NotNull String> relations;
 
 	public PartialInterpretationPreservation getNonExistingObjects() {
 		return isEnabled() && nonExistingObjects != null ? nonExistingObjects :
@@ -29,5 +38,14 @@ public class JsonOutputFormat extends OutputFormat {
 
 	public void setShadowPredicates(PartialInterpretationPreservation shadowPredicates) {
 		this.shadowPredicates = shadowPredicates;
+	}
+
+	@Nullable
+	public List<String> getRelations() {
+		return relations;
+	}
+
+	public void setRelations(@Nullable List<String> relations) {
+		this.relations = relations;
 	}
 }

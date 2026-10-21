@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2025 The Refinery Authors <https://refinery.tools/>
+ * SPDX-FileCopyrightText: 2025-2026 The Refinery Authors <https://refinery.tools/>
  *
  * SPDX-License-Identifier: EPL-2.0
  */
@@ -19,6 +19,7 @@ export type PartialInterpretationPreservation = z.infer<
 export const JsonOutputFormat = OutputFormat.extend({
   nonExistingObjects: PartialInterpretationPreservation.default('discard'),
   shadowPredicates: PartialInterpretationPreservation.default('discard'),
+  relations: z.array(z.string()).optional(),
 });
 
 export type JsonOutputFormat = z.infer<typeof JsonOutputFormat>;
