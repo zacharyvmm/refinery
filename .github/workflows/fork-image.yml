@@ -1,0 +1,80 @@
+# SPDX-FileCopyrightText: 2026 The Refinery Authors
+#
+# SPDX-License-Identifier: EPL-2.0
+
+# Publishes the web image of a fork to its own GitHub Container registry namespace, since build.yml only publishes
+# images from graphs4value/refinery.
+name: Fork image
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+concurrency:
+  group: fork-image-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  web-image:
+    name: Build and publish the web image
+    if: ${{ github.repository != 'graphs4value/refinery' }}
+    permissions:
+      contents: read
+      packages: write
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Set up JDK 25
+        uses: actions/setup-java@v5
+        with:
+          java-version: 25
+          distribution: temurin
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Fetch upstream release tags
+        run: git fetch --no-tags https://github.com/graphs4value/refinery.git '+refs/tags/v*:refs/tags/v*'
+      - name: Cache Gradle packages
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.gradle/caches
+          key: fork-image-gradle-${{ hashFiles('**/*.gradle.kts', 'gradle.properties', 'gradle/libs.versions.toml', 'gradle/pluginLibs.versions.toml', 'gradle/wrapper/gradle-wrapper.properties') }}
+      - name: Cache node distribution
+        uses: actions/cache@v5
+        with:
+          path: |
+            .node
+          key: fork-image-node-${{ hashFiles('gradle.properties') }}
+      - name: Cache yarn packages
+        uses: actions/cache@v5
+        with:
+          path: |
+            .yarn/cache
+          key: fork-image-yarn-${{ hashFiles('yarn.lock') }}
+      - name: Build application distributions
+        run: |
+          ./gradlew :refinery-generator-cli:distTar :refinery-language-web:distTar :refinery-chat:assembleFrontend :refinery-frontend:assembleFrontend -Pci --info --stacktrace --max-workers 4 --no-daemon
+      - name: Extract application artifacts
+        working-directory: ./docker
+        run: |
+          ./prepare_context.sh
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@ce360397dd3f832beb865e1373c09c0e9f86d70a
+        with:
+          platforms: arm64
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd
+        with:
+          platforms: linux/amd64,linux/arm64
+      - name: Log in to GitHub Container registry
+        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and upload the web image
+        working-directory: ./docker
+        run: |
+          export REFINERY_IMAGE_REPOSITORY="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}"
+          export REFINERY_SOURCE_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}"
+          ./bake.sh true web --set '*.cache-from=gha' --set '*.cache-to=type=gha,mode=max'
