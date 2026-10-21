@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2021-2024 The Refinery Authors <https://refinery.tools/>
+ * SPDX-FileCopyrightText: 2021-2026 The Refinery Authors <https://refinery.tools/>
  *
  * SPDX-License-Identifier: EPL-2.0
  */
@@ -13,13 +13,20 @@ import com.google.inject.Inject;
 import org.eclipse.emf.ecore.EObject;
 import org.eclipse.emf.ecore.EReference;
 import org.eclipse.xtext.EcoreUtil2;
+import org.eclipse.xtext.naming.QualifiedName;
+import org.eclipse.xtext.resource.IEObjectDescription;
 import org.eclipse.xtext.scoping.IScope;
 import org.eclipse.xtext.scoping.Scopes;
+import org.eclipse.xtext.scoping.impl.MapBasedScope;
+import org.eclipse.xtext.util.IResourceScopeCache;
+import org.eclipse.xtext.util.Tuples;
 import tools.refinery.language.annotations.internal.TypedAnnotationContext;
 import tools.refinery.language.model.problem.*;
 
 import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.Map;
 
 /**
  * This class contains custom scoping description.
@@ -29,8 +36,13 @@ import java.util.LinkedHashSet;
  * on how and when to use it.
  */
 public class ProblemScopeProvider extends AbstractProblemScopeProvider {
+	private static final String NODES_BY_NAME = "tools.refinery.language.scoping.ProblemScopeProvider.NODES_BY_NAME";
+
 	@Inject
 	private TypedAnnotationContext annotationContext;
+
+	@Inject
+	private IResourceScopeCache cache = IResourceScopeCache.NullImpl.INSTANCE;
 
 	@Override
 	public IScope getScope(EObject context, EReference reference) {
@@ -61,7 +73,25 @@ public class ProblemScopeProvider extends AbstractProblemScopeProvider {
 		if (problem == null) {
 			return delegateScope;
 		}
-		return Scopes.scopeFor(problem.getNodes(), delegateScope);
+		// {@link Scopes#scopeFor} would scan every node for each lookup, which makes linking quadratic in the number of
+		// nodes. Index them by name once per resource instead.
+		var resource = problem.eResource();
+		var nodesByName = resource == null ? indexNodes(problem) :
+				cache.get(Tuples.create(problem, NODES_BY_NAME), resource, () -> indexNodes(problem));
+		if (nodesByName.isEmpty()) {
+			return delegateScope;
+		}
+		return new MapBasedScope(delegateScope, nodesByName, false) {
+		};
+	}
+
+	private static Map<QualifiedName, IEObjectDescription> indexNodes(Problem problem) {
+		var nodesByName = new LinkedHashMap<QualifiedName, IEObjectDescription>();
+		for (var description : Scopes.scopedElementsFor(problem.getNodes())) {
+			// Keep the first node with a given name, like {@link MapBasedScope#createScope} does.
+			nodesByName.putIfAbsent(description.getName(), description);
+		}
+		return nodesByName;
 	}
 
 	protected IScope getVariableOrNodeElementScope(EObject context) {
