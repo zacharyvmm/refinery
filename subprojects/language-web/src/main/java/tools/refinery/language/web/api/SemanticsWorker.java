@@ -87,7 +87,7 @@ public class SemanticsWorker extends ScheduledWorker<SemanticsRequest> {
 		var request = getRequest();
 		var jsonFormat = request.getFormat().getJson();
 		var json = jsonFormat.isEnabled() ?
-				outputSerializer.savePartialInterpretation(semantics, jsonFormat.getRelations()) : null;
+				outputSerializer.savePartialInterpretation(semantics, jsonFormat) : null;
 		setResponse(new RefineryResponse.Success(new SemanticsSuccessResult(issues, json)));
 	}
 }

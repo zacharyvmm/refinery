@@ -124,7 +124,7 @@ public abstract class AbstractGenerateWorker<T extends GenerateRequest> extends 
 		var request = getRequest();
 		var jsonFormat = request.getFormat().getJson();
 		var json = jsonFormat.isEnabled() ?
-				outputSerializer.savePartialInterpretation(generator, jsonFormat.getRelations()) : null;
+				outputSerializer.savePartialInterpretation(generator, jsonFormat) : null;
 		boolean sourceEnabled = request.getFormat().getSource().isEnabled();
 		var source = sourceEnabled ? outputSerializer.saveSource(generator) : null;
 		return new GenerateSuccessResult(json, source);
