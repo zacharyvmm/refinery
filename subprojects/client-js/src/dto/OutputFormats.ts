@@ -20,6 +20,7 @@ export const JsonOutputFormat = OutputFormat.extend({
   nonExistingObjects: PartialInterpretationPreservation.default('discard'),
   shadowPredicates: PartialInterpretationPreservation.default('discard'),
   relations: z.array(z.string()).optional(),
+  excludedRelations: z.array(z.string()).optional(),
 });
 
 export type JsonOutputFormat = z.infer<typeof JsonOutputFormat>;

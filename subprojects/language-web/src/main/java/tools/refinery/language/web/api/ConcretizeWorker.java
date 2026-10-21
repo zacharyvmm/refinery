@@ -86,7 +86,7 @@ public class ConcretizeWorker extends ScheduledWorker<SemanticsRequest> {
 		var request = getRequest();
 		var jsonFormat = request.getFormat().getJson();
 		var json = jsonFormat.isEnabled() ?
-				outputSerializer.savePartialInterpretation(semantics, jsonFormat.getRelations()) : null;
+				outputSerializer.savePartialInterpretation(semantics, jsonFormat) : null;
 		boolean sourceEnabled = request.getFormat().getSource().isEnabled();
 		var source = sourceEnabled ? outputSerializer.saveSource(semantics) : null;
 		setResponse(new RefineryResponse.Success(new ConcretizeSuccessResult(issues, json, source)));

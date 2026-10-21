@@ -8,12 +8,12 @@ package tools.refinery.language.web.api.util;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import org.eclipse.xtext.web.server.validation.ValidationResult;
-import org.jetbrains.annotations.Nullable;
 import tools.refinery.generator.ModelFacade;
 import tools.refinery.generator.ModelFacadeResult;
 import tools.refinery.generator.RefineryDiagnostics;
 import tools.refinery.generator.json.PartialModel2Json;
 import tools.refinery.generator.json.PartialModelJson;
+import tools.refinery.language.web.api.dto.JsonOutputFormat;
 import tools.refinery.language.web.api.dto.RefineryResponse;
 import tools.refinery.store.reasoning.ReasoningAdapter;
 import tools.refinery.store.util.CancellationToken;
@@ -78,8 +78,8 @@ public class OutputSerializer {
 		return true;
 	}
 
-	public PartialModelJson savePartialInterpretation(ModelFacade facade, @Nullable List<String> relations) {
-		return partialModel2Json.savePartialInterpretation(facade, cancellationToken, relations);
+	public PartialModelJson savePartialInterpretation(ModelFacade facade, JsonOutputFormat format) {
+		return partialModel2Json.savePartialInterpretation(facade, cancellationToken, format.createRelationFilter());
 	}
 
 	public List<ValidationResult.Issue> getIssues(ModelFacade facade) {

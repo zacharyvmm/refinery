@@ -15,6 +15,8 @@ import tools.refinery.store.util.CancellationToken;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Set;
+import java.util.function.Predicate;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsInAnyOrder;
@@ -33,7 +35,7 @@ class PartialModel2JsonTest {
 
 	@Test
 	void allRelationsTest() throws IOException {
-		var json = save(null);
+		var json = save(ignored -> true);
 		var names = List.of("builtin::exists", "Person", "Person::friend", "lonely");
 		assertThat(json.partialInterpretation().keySet(), hasItems(names.toArray(String[]::new)));
 		assertThat(getRelationNames(json), hasItems(names.toArray(String[]::new)));
@@ -41,12 +43,12 @@ class PartialModel2JsonTest {
 
 	@Test
 	void selectedRelationsTest() throws IOException {
-		var json = save(List.of("Person::friend", "lonely", "nonExistent"));
+		var json = save(Set.of("Person::friend", "lonely", "nonExistent")::contains);
 		assertThat(json.partialInterpretation().keySet(), containsInAnyOrder("Person::friend", "lonely"));
 		assertThat(getRelationNames(json), containsInAnyOrder("Person::friend", "lonely"));
 	}
 
-	private PartialModelJson save(List<String> relations) throws IOException {
+	private PartialModelJson save(Predicate<String> includeRelation) throws IOException {
 		var problem = loader.loadString("""
 				class Person {
 					Person[] friend
@@ -59,7 +61,7 @@ class PartialModel2JsonTest {
 				friend(alice, bob).
 				""");
 		try (var semantics = semanticsFactory.createSemantics(problem)) {
-			return partialModel2Json.savePartialInterpretation(semantics, CancellationToken.NONE, relations);
+			return partialModel2Json.savePartialInterpretation(semantics, CancellationToken.NONE, includeRelation);
 		}
 	}
 
