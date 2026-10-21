@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2024 The Refinery Authors <https://refinery.tools/>
+ * SPDX-FileCopyrightText: 2024-2026 The Refinery Authors <https://refinery.tools/>
  *
  * SPDX-License-Identifier: EPL-2.0
  */
@@ -44,7 +44,11 @@ public class TypeConstraintRefiner {
 	}
 
 	public void mergeFromSeed(PartialSymbol<TruthValue, Boolean> linkType, ModelSeed modelSeed) {
-		var cursor = modelSeed.getCursor(linkType);
+		// Only entries that must hold are merged. Skip the seed's majority value unless it must hold, so that the cursor
+		// visits the asserted entries instead of every tuple of nodes.
+		var majorityValue = modelSeed.getSeed(linkType).majorityValue();
+		var defaultValue = majorityValue.must() ? linkType.defaultValue() : majorityValue;
+		var cursor = modelSeed.getCursor(linkType, defaultValue);
 		while (cursor.move()) {
 			var value = cursor.getValue();
 			if (value.must()) {
