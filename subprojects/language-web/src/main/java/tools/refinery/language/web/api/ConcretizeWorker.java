@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2025 The Refinery Authors <https://refinery.tools/>
+ * SPDX-FileCopyrightText: 2025-2026 The Refinery Authors <https://refinery.tools/>
  *
  * SPDX-License-Identifier: EPL-2.0
  */
@@ -84,8 +84,9 @@ public class ConcretizeWorker extends ScheduledWorker<SemanticsRequest> {
 		checkCancelled();
 		var issues = outputSerializer.getIssues(semantics);
 		var request = getRequest();
-		boolean jsonEnabled = request.getFormat().getJson().isEnabled();
-		var json = jsonEnabled ? outputSerializer.savePartialInterpretation(semantics) : null;
+		var jsonFormat = request.getFormat().getJson();
+		var json = jsonFormat.isEnabled() ?
+				outputSerializer.savePartialInterpretation(semantics, jsonFormat.getRelations()) : null;
 		boolean sourceEnabled = request.getFormat().getSource().isEnabled();
 		var source = sourceEnabled ? outputSerializer.saveSource(semantics) : null;
 		setResponse(new RefineryResponse.Success(new ConcretizeSuccessResult(issues, json, source)));

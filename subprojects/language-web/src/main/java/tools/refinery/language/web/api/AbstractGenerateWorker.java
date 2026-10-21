@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2025 The Refinery Authors <https://refinery.tools/>
+ * SPDX-FileCopyrightText: 2025-2026 The Refinery Authors <https://refinery.tools/>
  *
  * SPDX-License-Identifier: EPL-2.0
  */
@@ -122,8 +122,9 @@ public abstract class AbstractGenerateWorker<T extends GenerateRequest> extends 
 
 	protected GenerateSuccessResult saveModel(ModelGenerator generator) throws IOException {
 		var request = getRequest();
-		boolean jsonEnabled = request.getFormat().getJson().isEnabled();
-		var json = jsonEnabled ? outputSerializer.savePartialInterpretation(generator) : null;
+		var jsonFormat = request.getFormat().getJson();
+		var json = jsonFormat.isEnabled() ?
+				outputSerializer.savePartialInterpretation(generator, jsonFormat.getRelations()) : null;
 		boolean sourceEnabled = request.getFormat().getSource().isEnabled();
 		var source = sourceEnabled ? outputSerializer.saveSource(generator) : null;
 		return new GenerateSuccessResult(json, source);

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2023-2024 The Refinery Authors <https://refinery.tools/>
+ * SPDX-FileCopyrightText: 2023-2026 The Refinery Authors <https://refinery.tools/>
  *
  * SPDX-License-Identifier: EPL-2.0
  */
@@ -20,6 +20,7 @@ import tools.refinery.store.util.CancellationToken;
 
 import java.util.TreeMap;
 import java.util.function.Function;
+import java.util.function.Predicate;
 
 @Singleton
 class PartialInterpretation2Json {
@@ -30,13 +31,20 @@ class PartialInterpretation2Json {
 	private SemanticsUtils semanticsUtils;
 
 	public JsonObject getPartialInterpretation(ModelFacade facade, CancellationToken cancellationToken) {
-		var model = facade.getModel();
+		return getPartialInterpretation(facade, cancellationToken, ignored -> true);
+	}
+
+	public JsonObject getPartialInterpretation(ModelFacade facade, CancellationToken cancellationToken,
+											   Predicate<String> includeRelation) {
 		var json = new JsonObject();
 		for (var entry : facade.getProblemTrace().getRelationTrace().entrySet()) {
 			var relation = entry.getKey();
 			var partialSymbol = entry.getValue();
-			var tuples = getTuplesJson(facade, partialSymbol);
 			var name = semanticsUtils.getNameWithoutRootPrefix(relation).orElse(partialSymbol.name());
+			if (!includeRelation.test(name)) {
+				continue;
+			}
+			var tuples = getTuplesJson(facade, partialSymbol);
 			json.add(name, tuples);
 			cancellationToken.checkCancelled();
 		}
