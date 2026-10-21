@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2023-2024 The Refinery Authors <https://refinery.tools/>
+ * SPDX-FileCopyrightText: 2023-2026 The Refinery Authors <https://refinery.tools/>
  *
  * SPDX-License-Identifier: EPL-2.0
  */
@@ -7,7 +7,9 @@ package tools.refinery.language.semantics.metadata;
 
 import com.google.inject.Inject;
 import com.google.inject.Provider;
+import org.eclipse.emf.common.util.URI;
 import org.eclipse.emf.ecore.EObject;
+import org.eclipse.xtext.EcoreUtil2;
 import org.eclipse.xtext.naming.IQualifiedNameConverter;
 import org.eclipse.xtext.naming.IQualifiedNameProvider;
 import org.eclipse.xtext.naming.QualifiedName;
@@ -32,7 +34,9 @@ import tools.refinery.store.reasoning.representation.PartialRelation;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class MetadataCreator {
 	private static final List<String> CLASS_PARAMETER_NAMES = List.of(DocumentationCommentParser.CLASS_PARAMETER_NAME);
@@ -68,6 +72,7 @@ public class MetadataCreator {
 	private boolean preserveNewNodes;
 	private IScope nodeScope;
 	private IScope relationScope;
+	private final Map<IScope, ScopeIndex> scopeIndices = new HashMap<>();
 
 	public void setProblemTrace(ProblemTrace problemTrace) {
 		if (this.problemTrace != null) {
@@ -264,14 +269,9 @@ public class MetadataCreator {
 	}
 
 	private QualifiedName getSimpleName(EObject eObject, QualifiedName qualifiedName, IScope scope) {
-		var descriptions = scope.getElements(eObject);
-		var names = new ArrayList<QualifiedName>();
-		for (var description : descriptions) {
-			// {@code getQualifiedName()} will refer to the full name for objects that are loaded from the global
-			// scope, but {@code getName()} returns the qualified name that we set in
-			// {@code ProblemResourceDescriptionStrategy}.
-			names.add(description.getName());
-		}
+		// {@link IScope#getElements(EObject)} scans every element of the scope, which would make creating the metadata
+		// of all nodes quadratic in the number of nodes.
+		var names = scopeIndices.computeIfAbsent(scope, ScopeIndex::new).getNames(eObject);
 		names.sort(Comparator.comparingInt(QualifiedName::getSegmentCount));
 		for (var simpleName : names) {
 			if (names.contains(simpleName) && isUnique(scope, simpleName)) {
@@ -289,5 +289,55 @@ public class MetadataCreator {
 		}
 		iterator.next();
 		return !iterator.hasNext();
+	}
+
+	/**
+	 * The names of the elements of a scope, indexed by the object they refer to.
+	 * <p>
+	 * Like {@link org.eclipse.xtext.scoping.impl.AbstractScope#getElements(EObject)}, an element refers to an object
+	 * if it is the same object, or, for proxies, has the same URI. Elements that are shadowed or can't be found by
+	 * their name are included, but {@link #getSimpleName(EObject, QualifiedName, IScope)} only accepts names that are
+	 * unique in the scope anyway.
+	 * </p>
+	 */
+	private static class ScopeIndex {
+		private final Map<EObject, List<IndexedName>> namesByObject = new HashMap<>();
+		private final Map<URI, List<IndexedName>> namesByProxyUri = new HashMap<>();
+
+		public ScopeIndex(IScope scope) {
+			int index = 0;
+			for (var description : scope.getAllElements()) {
+				// {@code getQualifiedName()} will refer to the full name for objects that are loaded from the global
+				// scope, but {@code getName()} returns the qualified name that we set in
+				// {@code ProblemResourceDescriptionStrategy}.
+				var name = new IndexedName(index, description.getName());
+				var eObjectOrProxy = description.getEObjectOrProxy();
+				if (eObjectOrProxy.eIsProxy()) {
+					namesByProxyUri.computeIfAbsent(description.getEObjectURI(), ignored -> new ArrayList<>())
+							.add(name);
+				} else {
+					namesByObject.computeIfAbsent(eObjectOrProxy, ignored -> new ArrayList<>()).add(name);
+				}
+				index++;
+			}
+		}
+
+		public List<QualifiedName> getNames(EObject eObject) {
+			var names = new ArrayList<>(namesByObject.getOrDefault(eObject, List.of()));
+			if (!namesByProxyUri.isEmpty()) {
+				var uri = EcoreUtil2.getPlatformResourceOrNormalizedURI(eObject);
+				names.addAll(namesByProxyUri.getOrDefault(uri, List.of()));
+				// Keep the order of the elements in the scope.
+				names.sort(Comparator.comparingInt(IndexedName::index));
+			}
+			var result = new ArrayList<QualifiedName>(names.size());
+			for (var name : names) {
+				result.add(name.name());
+			}
+			return result;
+		}
+	}
+
+	private record IndexedName(int index, QualifiedName name) {
 	}
 }
