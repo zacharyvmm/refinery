@@ -52,7 +52,6 @@ public class SemanticsWorker extends ScheduledWorker<SemanticsRequest> {
 		problemLoader.cancellationToken(cancellationToken);
 		modelSemanticsFactory.cancellationToken(cancellationToken);
 		modelSemanticsFactory.concretize(false);
-		outputSerializer.setCancellationToken(cancellationToken);
 	}
 
 	@Override
@@ -87,7 +86,7 @@ public class SemanticsWorker extends ScheduledWorker<SemanticsRequest> {
 		var request = getRequest();
 		var jsonFormat = request.getFormat().getJson();
 		var json = jsonFormat.isEnabled() ?
-				outputSerializer.savePartialInterpretation(semantics, jsonFormat) : null;
+				outputSerializer.savePartialInterpretation(semantics, jsonFormat, getCancellationToken()) : null;
 		setResponse(new RefineryResponse.Success(new SemanticsSuccessResult(issues, json)));
 	}
 }

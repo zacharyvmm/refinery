@@ -52,7 +52,6 @@ public class ConcretizeWorker extends ScheduledWorker<SemanticsRequest> {
 		problemLoader.cancellationToken(cancellationToken);
 		modelSemanticsFactory.cancellationToken(cancellationToken);
 		modelSemanticsFactory.concretize(true);
-		outputSerializer.setCancellationToken(cancellationToken);
 	}
 	@Override
 	protected void run() throws IOException {
@@ -86,9 +85,9 @@ public class ConcretizeWorker extends ScheduledWorker<SemanticsRequest> {
 		var request = getRequest();
 		var jsonFormat = request.getFormat().getJson();
 		var json = jsonFormat.isEnabled() ?
-				outputSerializer.savePartialInterpretation(semantics, jsonFormat) : null;
+				outputSerializer.savePartialInterpretation(semantics, jsonFormat, getCancellationToken()) : null;
 		boolean sourceEnabled = request.getFormat().getSource().isEnabled();
-		var source = sourceEnabled ? outputSerializer.saveSource(semantics) : null;
+		var source = sourceEnabled ? outputSerializer.saveSource(semantics, getCancellationToken()) : null;
 		setResponse(new RefineryResponse.Success(new ConcretizeSuccessResult(issues, json, source)));
 	}
 }
