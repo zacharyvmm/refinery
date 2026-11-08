@@ -60,25 +60,29 @@ class SemanticsWorkerTest {
 	}
 
 	@AfterEach
-	void afterEach() throws InterruptedException {
+	void afterEach() {
 		// Let the requests run even if the test failed before releasing them, and wait for them to finish before
 		// the injector's global state is restored. The requests finish first, so that each cancels its own timeout
-		// before the scheduler of timeouts shuts down.
+		// before the scheduler of timeouts shuts down. Every step runs, even if this thread is interrupted, and only
+		// then does the teardown fail.
 		release.countDown();
 		var timeoutExecutor = workerExecutorServices.getScheduled(
 				ThreadPoolExecutorServiceProvider.MODEL_GENERATION_TIMEOUT_EXECUTOR);
-		boolean requestsDone = false;
-		boolean timeoutsDone = false;
+		boolean requestsDone = shutdownAndAwait(semanticsExecutor, Duration.ofMinutes(5));
+		boolean timeoutsDone;
 		try {
-			semanticsExecutor.shutdown();
-			requestsDone = semanticsExecutor.awaitTermination(5, TimeUnit.MINUTES);
-		} finally {
-			if (!requestsDone) {
-				semanticsExecutor.shutdownNow();
-			}
 			workerExecutorServices.dispose();
-			timeoutsDone = timeoutExecutor.awaitTermination(1, TimeUnit.MINUTES);
-			awaitTerminationExecutorServiceProvider.dispose();
+		} finally {
+			timeoutsDone = shutdownAndAwait(timeoutExecutor, Duration.ofMinutes(1));
+			// The provider gives up waiting at once on an interrupted thread: wait first, then leave it interrupted.
+			boolean interrupted = Thread.interrupted();
+			try {
+				awaitTerminationExecutorServiceProvider.dispose();
+			} finally {
+				if (interrupted) {
+					Thread.currentThread().interrupt();
+				}
+			}
 		}
 		assertTrue(requestsDone, "Requests still running");
 		assertTrue(timeoutsDone, "Timeouts still scheduled");
@@ -107,12 +111,50 @@ class SemanticsWorkerTest {
 		var executorServices = new SingleThreadExecutorServiceProvider();
 		var timeoutExecutor = executorServices.getScheduled(
 				ThreadPoolExecutorServiceProvider.MODEL_GENERATION_TIMEOUT_EXECUTOR);
-		var timeout = timeoutExecutor.schedule(() -> {
-		}, 10, TimeUnit.MINUTES);
-		executorServices.dispose();
-		// A request that ends after the scheduler shut down cancels its timeout only then.
-		timeout.cancel(true);
-		assertTrue(timeoutExecutor.awaitTermination(5, TimeUnit.SECONDS), "Timeout still scheduled");
+		try {
+			var timeout = timeoutExecutor.schedule(() -> {
+			}, 10, TimeUnit.MINUTES);
+			executorServices.dispose();
+			// A request that ends after the scheduler shut down cancels its timeout only then.
+			timeout.cancel(true);
+			assertTrue(timeoutExecutor.awaitTermination(5, TimeUnit.SECONDS), "Timeout still scheduled");
+		} finally {
+			// Should the test fail, the timeout must not keep its thread waiting either.
+			shutdownAndAwait(timeoutExecutor, Duration.ofSeconds(5));
+		}
+	}
+
+	/**
+	 * Shuts {@code executor} down and waits for its tasks to end, at most {@code timeout}, and as long again after
+	 * interrupting them. It waits even if this thread is interrupted, and leaves it interrupted then.
+	 *
+	 * @return Whether the tasks ended.
+	 */
+	private static boolean shutdownAndAwait(ExecutorService executor, Duration timeout) {
+		boolean interrupted = false;
+		executor.shutdown();
+		try {
+			try {
+				if (executor.awaitTermination(timeout.toNanos(), TimeUnit.NANOSECONDS)) {
+					return true;
+				}
+			} catch (InterruptedException e) {
+				interrupted = true;
+			}
+			executor.shutdownNow();
+			long deadline = System.nanoTime() + timeout.toNanos();
+			while (true) {
+				try {
+					return executor.awaitTermination(deadline - System.nanoTime(), TimeUnit.NANOSECONDS);
+				} catch (InterruptedException e) {
+					interrupted = true;
+				}
+			}
+		} finally {
+			if (interrupted) {
+				Thread.currentThread().interrupt();
+			}
+		}
 	}
 
 	private SemanticsWorker createWorker() {
