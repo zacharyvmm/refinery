@@ -56,7 +56,6 @@ public abstract class AbstractGenerateWorker<T extends GenerateRequest> extends 
 		var cancellationToken = getCancellationToken();
 		problemLoader.cancellationToken(cancellationToken);
 		modelGeneratorFactory.cancellationToken(cancellationToken);
-		outputSerializer.setCancellationToken(cancellationToken);
 	}
 
 	@Override
@@ -124,9 +123,9 @@ public abstract class AbstractGenerateWorker<T extends GenerateRequest> extends 
 		var request = getRequest();
 		var jsonFormat = request.getFormat().getJson();
 		var json = jsonFormat.isEnabled() ?
-				outputSerializer.savePartialInterpretation(generator, jsonFormat) : null;
+				outputSerializer.savePartialInterpretation(generator, jsonFormat, getCancellationToken()) : null;
 		boolean sourceEnabled = request.getFormat().getSource().isEnabled();
-		var source = sourceEnabled ? outputSerializer.saveSource(generator) : null;
+		var source = sourceEnabled ? outputSerializer.saveSource(generator, getCancellationToken()) : null;
 		return new GenerateSuccessResult(json, source);
 	}
 }

@@ -40,28 +40,20 @@ public class OutputSerializer {
 	@Inject
 	private RefineryDiagnostics refineryDiagnostics;
 
-	private CancellationToken cancellationToken;
-
-	public void setCancellationToken(CancellationToken cancellationToken) {
-		this.cancellationToken = cancellationToken;
-	}
-
-	private void checkCancelled() {
+	// This class is a singleton shared by concurrent requests, so the cancellation token of each request is passed to
+	// each call instead of being stored in a field.
+	public String saveSource(ModelFacade facade, CancellationToken cancellationToken) throws IOException {
 		cancellationToken.checkCancelled();
-	}
-
-	public String saveSource(ModelFacade facade) throws IOException {
-		checkCancelled();
 		if (isLarge(facade)) {
 			return null;
 		}
-		checkCancelled();
+		cancellationToken.checkCancelled();
 		var serializedSolutionOption = facade.trySerialize();
 		if (serializedSolutionOption.isEmpty()) {
 			return null;
 		}
 		var serializedSolution = serializedSolutionOption.get();
-		checkCancelled();
+		cancellationToken.checkCancelled();
 		try (var outputStream = new ByteArrayOutputStream()) {
 			serializedSolution.eResource().save(outputStream, Map.of());
 			return outputStream.toString(StandardCharsets.UTF_8);
@@ -78,7 +70,8 @@ public class OutputSerializer {
 		return true;
 	}
 
-	public PartialModelJson savePartialInterpretation(ModelFacade facade, JsonOutputFormat format) {
+	public PartialModelJson savePartialInterpretation(ModelFacade facade, JsonOutputFormat format,
+													  CancellationToken cancellationToken) {
 		return partialModel2Json.savePartialInterpretation(facade, cancellationToken, format.createRelationFilter());
 	}
 
