@@ -26,6 +26,8 @@ import java.time.Duration;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
 import static org.hamcrest.MatcherAssert.assertThat;
@@ -60,11 +62,26 @@ class SemanticsWorkerTest {
 	@AfterEach
 	void afterEach() throws InterruptedException {
 		// Let the requests run even if the test failed before releasing them, and wait for them to finish before
-		// the injector's global state is restored.
+		// the injector's global state is restored. The requests finish first, so that each cancels its own timeout
+		// before the scheduler of timeouts shuts down.
 		release.countDown();
-		workerExecutorServices.dispose();
-		assertTrue(semanticsExecutor.awaitTermination(5, TimeUnit.MINUTES), "Requests still running");
-		awaitTerminationExecutorServiceProvider.dispose();
+		var timeoutExecutor = workerExecutorServices.getScheduled(
+				ThreadPoolExecutorServiceProvider.MODEL_GENERATION_TIMEOUT_EXECUTOR);
+		boolean requestsDone = false;
+		boolean timeoutsDone = false;
+		try {
+			semanticsExecutor.shutdown();
+			requestsDone = semanticsExecutor.awaitTermination(5, TimeUnit.MINUTES);
+		} finally {
+			if (!requestsDone) {
+				semanticsExecutor.shutdownNow();
+			}
+			workerExecutorServices.dispose();
+			timeoutsDone = timeoutExecutor.awaitTermination(1, TimeUnit.MINUTES);
+			awaitTerminationExecutorServiceProvider.dispose();
+		}
+		assertTrue(requestsDone, "Requests still running");
+		assertTrue(timeoutsDone, "Timeouts still scheduled");
 	}
 
 	@Test
@@ -83,6 +100,19 @@ class SemanticsWorkerTest {
 
 		assertThat(live.await(), instanceOf(RefineryResponse.Success.class));
 		assertThat(cancelled.await(), instanceOf(RefineryResponse.Cancelled.class));
+	}
+
+	@Test
+	void timeoutsDoNotOutliveTheTest() throws InterruptedException {
+		var executorServices = new SingleThreadExecutorServiceProvider();
+		var timeoutExecutor = executorServices.getScheduled(
+				ThreadPoolExecutorServiceProvider.MODEL_GENERATION_TIMEOUT_EXECUTOR);
+		var timeout = timeoutExecutor.schedule(() -> {
+		}, 10, TimeUnit.MINUTES);
+		executorServices.dispose();
+		// A request that ends after the scheduler shut down cancels its timeout only then.
+		timeout.cancel(true);
+		assertTrue(timeoutExecutor.awaitTermination(5, TimeUnit.SECONDS), "Timeout still scheduled");
 	}
 
 	private SemanticsWorker createWorker() {
@@ -117,6 +147,16 @@ class SemanticsWorkerTest {
 		@Override
 		protected ExecutorService createInstance(String key) {
 			return Executors.newSingleThreadExecutor();
+		}
+
+		@Override
+		protected ScheduledExecutorService createScheduledInstance(String key) {
+			// Drop the timeouts still scheduled when shut down, even those of requests that end afterwards, so that
+			// no thread waits for their deadlines after the test.
+			var executor = new ScheduledThreadPoolExecutor(1);
+			executor.setExecuteExistingDelayedTasksAfterShutdownPolicy(false);
+			executor.setRemoveOnCancelPolicy(true);
+			return executor;
 		}
 	}
 
