@@ -24,13 +24,13 @@ import tools.refinery.language.web.xtext.server.ThreadPoolExecutorServiceProvide
 
 import java.time.Duration;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.instanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 @ExtendWith(InjectionExtension.class)
 @InjectWith(ProblemWebInjectorProvider.class)
@@ -41,31 +41,37 @@ class SemanticsWorkerTest {
 	@Inject
 	private DelegatingExecutorServiceProvider executorServices;
 
-	@Inject
-	private ThreadPoolExecutorServiceProvider threadPoolExecutorServiceProvider;
-
 	private AwaitTerminationExecutorServiceProvider awaitTerminationExecutorServiceProvider;
+
+	private final SingleThreadExecutorServiceProvider workerExecutorServices =
+			new SingleThreadExecutorServiceProvider();
+
+	private ExecutorService semanticsExecutor;
+
+	private final CountDownLatch release = new CountDownLatch(1);
 
 	@BeforeEach
 	void beforeEach() {
 		awaitTerminationExecutorServiceProvider = new AwaitTerminationExecutorServiceProvider();
 		executorServices.setDelegate(awaitTerminationExecutorServiceProvider);
+		semanticsExecutor = workerExecutorServices.get(ThreadPoolExecutorServiceProvider.SEMANTICS_EXECUTOR);
 	}
 
 	@AfterEach
-	void afterEach() {
+	void afterEach() throws InterruptedException {
+		// Let the requests run even if the test failed before releasing them, and wait for them to finish before
+		// the injector's global state is restored.
+		release.countDown();
+		workerExecutorServices.dispose();
+		assertTrue(semanticsExecutor.awaitTermination(5, TimeUnit.MINUTES), "Requests still running");
 		awaitTerminationExecutorServiceProvider.dispose();
 	}
 
 	@Test
 	void requestIsNotCancelledByAnotherCancelledRequest() throws Exception {
-		var executor = threadPoolExecutorServiceProvider.get(ThreadPoolExecutorServiceProvider.SEMANTICS_EXECUTOR);
-		assumeTrue(executor instanceof ThreadPoolExecutor pool && pool.getMaximumPoolSize() == 1,
-				"Needs a single semantics thread to order the requests");
 		// Hold the only semantics thread, so that both requests are scheduled before either runs: the live request
 		// is initialized first and runs first, and the cancelled one is initialized while the live one waits.
-		var release = new CountDownLatch(1);
-		var blocker = executor.submit(() -> {
+		semanticsExecutor.submit(() -> {
 			release.await();
 			return null;
 		});
@@ -74,7 +80,6 @@ class SemanticsWorkerTest {
 		createWorker().schedule(request(), live);
 		createWorker().schedule(request(), cancelled);
 		release.countDown();
-		blocker.get(1, TimeUnit.MINUTES);
 
 		assertThat(live.await(), instanceOf(RefineryResponse.Success.class));
 		assertThat(cancelled.await(), instanceOf(RefineryResponse.Cancelled.class));
@@ -89,6 +94,7 @@ class SemanticsWorkerTest {
 			}
 		};
 		injector.injectMembers(worker);
+		worker.setExecutorServiceProvider(workerExecutorServices);
 		return worker;
 	}
 
@@ -101,6 +107,17 @@ class SemanticsWorkerTest {
 		var request = new SemanticsRequest();
 		request.setInput(input);
 		return request;
+	}
+
+	/**
+	 * Executors of one thread each, whatever the environment sets the server's thread counts to, so that requests
+	 * run in the order they are scheduled.
+	 */
+	private static class SingleThreadExecutorServiceProvider extends ThreadPoolExecutorServiceProvider {
+		@Override
+		protected ExecutorService createInstance(String key) {
+			return Executors.newSingleThreadExecutor();
+		}
 	}
 
 	private static class RecordingSink implements ResponseSink {
